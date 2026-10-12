@@ -149,6 +149,9 @@ impl Zb {
 
     fn run(&self, args: &[&str]) -> Output {
         Command::new(&self.bin)
+            .env("HOME", self.root.path())
+            .env("SHELL", "/bin/sh")
+            .env_remove("ZDOTDIR")
             .env("ZEROBREW_ROOT", self.root.path())
             .env("ZEROBREW_PREFIX", self.prefix())
             .env("ZEROBREW_AUTO_INIT", "true")

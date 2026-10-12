@@ -29,6 +29,11 @@ impl TestEnv {
     fn zb(&self, args: &[&str]) -> Output {
         let zb = env!("CARGO_BIN_EXE_zb");
         Command::new(zb)
+            // Auto-init also writes shell configuration: isolate HOME and SHELL,
+            // not just package storage, so tests cannot change the user's shell.
+            .env("HOME", self.root.path())
+            .env("SHELL", "/bin/sh")
+            .env_remove("ZDOTDIR")
             .env("ZEROBREW_ROOT", self.root.path())
             // Use the short prefix so Mach-O patching stays within the 13-char limit,
             // and prevent a host-level ZEROBREW_PREFIX from leaking into the test.
@@ -104,6 +109,22 @@ fn assert_success(output: &Output, context: &str) {
         context,
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn auto_init_writes_shell_config_only_inside_the_test_home() {
+    let t = TestEnv::new();
+    // Force the real auto-init path; both TempDirs otherwise already exist.
+    std::fs::remove_dir(t.prefix()).unwrap();
+    let fish_config = t.root.path().join(".config/fish/conf.d/zerobrew.fish");
+    std::fs::create_dir_all(fish_config.parent().unwrap()).unwrap();
+    std::fs::write(&fish_config, "# keep this fish configuration\n").unwrap();
+    assert_success(&t.zb(&["list"]), "zb list with isolated auto-init");
+    assert!(t.root.path().join(".profile").is_file());
+    assert_eq!(
+        std::fs::read_to_string(fish_config).unwrap(),
+        "# keep this fish configuration\n"
     );
 }
 

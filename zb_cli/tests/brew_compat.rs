@@ -102,6 +102,9 @@ fn migrate_refuses_the_compatibility_entrypoint_before_installing() {
     let root = dir.path().join("root");
     let prefix = dir.path().join("prefix");
     let output = Command::new(env!("CARGO_BIN_EXE_zb"))
+        .env("HOME", dir.path())
+        .env("SHELL", "/bin/sh")
+        .env_remove("ZDOTDIR")
         .env("PATH", dir.path())
         .env("ZEROBREW_ROOT", &root)
         .env("ZEROBREW_PREFIX", &prefix)
@@ -115,6 +118,7 @@ fn migrate_refuses_the_compatibility_entrypoint_before_installing() {
         output
     );
     assert_eq!(fs::read_dir(prefix.join("Cellar")).unwrap().count(), 0);
+    assert!(dir.path().join(".profile").is_file());
 }
 
 #[test]
