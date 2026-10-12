@@ -110,6 +110,13 @@ mod tests {
 
 #[derive(Subcommand)]
 pub enum Commands {
+    /// Enable or remove the opt-in brew compatibility entrypoint
+    InstallAlias {
+        #[arg(value_parser = ["brew"])]
+        name: String,
+        #[arg(long, help = "Remove only zerobrew's brew symlink")]
+        remove: bool,
+    },
     /// Install formulas and casks
     Install {
         #[arg(required = true, num_args = 1..)]

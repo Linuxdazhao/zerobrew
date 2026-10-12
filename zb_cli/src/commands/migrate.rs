@@ -11,7 +11,8 @@ pub async fn execute(
     ui.heading("Fetching installed Homebrew packages...")
         .map_err(ui_error)?;
 
-    let packages = zb_io::get_homebrew_packages()?;
+    let brew = zb_io::installer::homebrew::find_homebrew()?;
+    let packages = zb_io::get_homebrew_packages(&brew)?;
 
     if packages.formulas.is_empty()
         && packages.non_core_formulas.is_empty()
@@ -179,7 +180,7 @@ pub async fn execute(
         args.push(target);
     }
 
-    let status = Command::new("brew")
+    let status = Command::new(&brew)
         .args(&args)
         .status()
         .map_err(|e| format!("Failed to run brew uninstall: {}", e));
@@ -195,7 +196,7 @@ pub async fn execute(
                 ui.error(e).map_err(ui_error)?;
             }
             let mut actually_failed = successfully_installed.clone();
-            if let Ok(output) = Command::new("brew").args(["list", "--formula"]).output()
+            if let Ok(output) = Command::new(&brew).args(["list", "--formula"]).output()
                 && output.status.success()
             {
                 let stdout = String::from_utf8_lossy(&output.stdout);

@@ -47,7 +47,7 @@ default:
 [doc('Build the zb binary')]
 [group('build')]
 build: fmt-check lint
-    cargo build --bin zb --bin zbx
+    cargo build --bin zb --bin zbx --bin zb-brew
 
 [doc('Install zb to $ZEROBREW_BIN')]
 [group('install')]
@@ -63,8 +63,10 @@ install: build
     mkdir -p "$ZEROBREW_BIN"
     install -Dm755 target/debug/zb "$ZEROBREW_BIN/zb"
     install -Dm755 target/debug/zbx "$ZEROBREW_BIN/zbx"
+    install -Dm755 target/debug/zb-brew "$ZEROBREW_BIN/zb-brew"
     echo "Installed zb to $ZEROBREW_BIN/zb"
     echo "Installed zbx to $ZEROBREW_BIN/zbx"
+    echo "Installed zb-brew to $ZEROBREW_BIN/zb-brew (enable with zb install-alias brew)"
 
     "$ZEROBREW_BIN/zb" init
 
@@ -129,6 +131,10 @@ uninstall:
         just _clean_shell_config "$config"
     done
 
+    if [[ -L "$ZEROBREW_BIN/brew" ]] && [[ "$(readlink "$ZEROBREW_BIN/brew")" == "zb-brew" ]]; then
+        rm -- "$ZEROBREW_BIN/brew"
+    fi
+    [[ -f "$ZEROBREW_BIN/zb-brew" ]] && rm -- "$ZEROBREW_BIN/zb-brew"
     [[ -f "$ZEROBREW_INSTALLED_BIN" ]] && rm -- "$ZEROBREW_INSTALLED_BIN"
     [[ -d "$ZEROBREW_DIR" ]] && rm -rf -- "$ZEROBREW_DIR"
 

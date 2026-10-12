@@ -60,6 +60,33 @@ brew install zerobrewhq/zerobrew/zerobrew
 
 ## Quick start
 
+To opt in to a `brew` compatibility entrypoint:
+
+```bash
+zb install-alias brew
+brew install jq
+zb install-alias brew --remove
+```
+
+This creates `brew -> zb-brew` beside `zb`; ensure that directory is on PATH.
+You can also enable it during installation:
+
+```bash
+curl -fsSL https://zerobrew.rs/install | bash -s -- --brew-compat
+```
+
+Enabling it refuses existing Homebrew or other `brew` entrypoints on PATH and
+standard Homebrew locations, and never replaces an existing file. Removing it
+only deletes zerobrew's own symlink. If `zb-brew` is missing, reinstall zerobrew.
+
+The entrypoint supports `install`, `uninstall`, `list`, `info`, `outdated`,
+`upgrade`, `doctor`, `bundle`, and `update`, using the arguments and output
+supported by `zb`. `cleanup` runs `zb gc` and only removes unreferenced store
+entries. `update` refreshes the formula index; it does not update zerobrew itself.
+Commands such as `search`, `services`, and `tap`, and flags such as `--cask` and
+`list --formula`, are not implemented and fail with a compatibility error.
+`zb migrate` requires real Homebrew on PATH and refuses this entrypoint.
+
 ```bash
 zb install jq                   # install one package
 zb install wget git             # install multiple
