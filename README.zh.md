@@ -87,6 +87,10 @@ curl -fsSL https://zerobrew.rs/install | bash -s -- --brew-compat
 `list --formula` 等参数暂不支持，会明确报错。
 `zb migrate` 需要 PATH 中的真实 Homebrew，不能通过该兼容入口执行迁移。
 
+自动初始化（`--auto-init` 或 `ZEROBREW_AUTO_INIT=true`）和 `zb reset`
+会创建数据目录，不会修改 shell 配置。需要配置 shell 时，显式运行 `zb init`；
+传入 `zb init --no-modify-path` 则保留现有配置。
+
 ```bash
 zb install jq                   # 安装单个软件包
 zb install wget git             # 安装多个软件包

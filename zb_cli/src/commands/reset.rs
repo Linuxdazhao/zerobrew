@@ -86,8 +86,8 @@ pub fn execute(
         }
     }
 
-    // Pass false for no_modify_shell since this is a re-initialization
-    run_init(root, prefix, false, ui).map_err(|e| match e {
+    // Reset package data without persisting this invocation's paths to the shell.
+    run_init(root, prefix, true, ui).map_err(|e| match e {
         InitError::Message(msg) => zb_core::Error::StoreCorruption { message: msg },
     })?;
 

@@ -87,6 +87,10 @@ Commands such as `search`, `services`, and `tap`, and flags such as `--cask` and
 `list --formula`, are not implemented and fail with a compatibility error.
 `zb migrate` requires real Homebrew on PATH and refuses this entrypoint.
 
+Automatic initialization (`--auto-init` or `ZEROBREW_AUTO_INIT=true`) and `zb reset`
+create data directories without changing shell configuration. Run `zb init`
+explicitly to configure your shell, or `zb init --no-modify-path` to leave it unchanged.
+
 ```bash
 zb install jq                   # install one package
 zb install wget git             # install multiple
