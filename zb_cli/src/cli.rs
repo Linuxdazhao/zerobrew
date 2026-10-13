@@ -27,7 +27,7 @@ pub struct Cli {
         long = "auto-init",
         global = true,
         env = "ZEROBREW_AUTO_INIT",
-        help = "Automatically initialize data directories without prompting or modifying shell configuration"
+        help = "Automatically initialize without prompting"
     )]
     pub auto_init: bool,
 

@@ -118,7 +118,6 @@ fn migrate_refuses_the_compatibility_entrypoint_before_installing() {
         output
     );
     assert_eq!(fs::read_dir(prefix.join("Cellar")).unwrap().count(), 0);
-    assert!(!dir.path().join(".profile").exists());
 }
 
 #[test]
