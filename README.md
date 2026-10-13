@@ -76,6 +76,10 @@ zb gc                           # garbage collect unused store entries
 zbx jq --version                # run without linking
 ```
 
+Automatic initialization (`--auto-init` or `ZEROBREW_AUTO_INIT=true`) and `zb reset`
+create data directories without changing shell configuration. Run `zb init`
+explicitly to configure your shell, or `zb init --no-modify-path` to leave it unchanged.
+
 ## Performance snapshot
 
 <div align="center">

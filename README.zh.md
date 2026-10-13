@@ -77,6 +77,10 @@ zb gc                           # 垃圾回收未使用的存储条目
 zbx jq --version                # 在不链接的情况下运行
 ```
 
+自动初始化（`--auto-init` 或 `ZEROBREW_AUTO_INIT=true`）和 `zb reset`
+会创建数据目录，不会修改 shell 配置。需要配置 shell 时，显式运行 `zb init`；
+传入 `zb init --no-modify-path` 则保留现有配置。
+
 ## 性能快照 (Performance snapshot)
 
 <div align="center">

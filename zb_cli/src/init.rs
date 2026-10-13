@@ -561,10 +561,9 @@ pub fn ensure_init(
             message: "Initialization required. Run 'zb init' first.".to_string(),
         });
     }
-    // Auto-initialize without prompting when non-interactive or auto_init is set
-
-    // Pass false for no_modify_shell since user confirmed they want full initialization
-    run_init(root, prefix, false, ui).map_err(|e| match e {
+    // Implicit initialization may use a temporary root/prefix. Persist shell
+    // configuration only when the user explicitly runs `zb init`.
+    run_init(root, prefix, true, ui).map_err(|e| match e {
         InitError::Message(msg) => zb_core::Error::StoreCorruption { message: msg },
     })
 }

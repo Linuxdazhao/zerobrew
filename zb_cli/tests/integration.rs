@@ -29,6 +29,10 @@ impl TestEnv {
     fn zb(&self, args: &[&str]) -> Output {
         let zb = env!("CARGO_BIN_EXE_zb");
         Command::new(zb)
+            // Isolate shell configuration as well as package storage.
+            .env("HOME", self.root.path())
+            .env("SHELL", "/bin/sh")
+            .env_remove("ZDOTDIR")
             .env("ZEROBREW_ROOT", self.root.path())
             // Use the short prefix so Mach-O patching stays within the 13-char limit,
             // and prevent a host-level ZEROBREW_PREFIX from leaking into the test.
@@ -277,4 +281,69 @@ fn test_gc_removes_unused_store_entries() {
 
     assert_success(&t.zb(&["gc"]), "zb gc");
     assert_eq!(t.count_store_entries(), 0);
+}
+
+#[test]
+fn only_explicit_init_modifies_shell_configuration() {
+    for (shell, config_name) in [
+        ("/usr/bin/fish", ".config/fish/conf.d/zerobrew.fish"),
+        ("/bin/bash", ".bashrc"),
+        ("/bin/zsh", ".zshrc"),
+    ] {
+        for existing in [false, true] {
+            let temp = tempfile::tempdir().unwrap();
+            let home = temp.path().join("home");
+            let root = temp.path().join("root");
+            let prefix = temp.path().join("prefix");
+            let config = home.join(config_name);
+            std::fs::create_dir_all(config.parent().unwrap()).unwrap();
+            let original = "# keep this configuration\n# >>> zerobrew >>>\n# previous zerobrew settings\n# <<< zerobrew <<<\n";
+            if existing {
+                std::fs::write(&config, original).unwrap();
+            }
+            let before = std::fs::read(&config).ok();
+            let run = |args: &[&str]| {
+                Command::new(env!("CARGO_BIN_EXE_zb"))
+                    .env("HOME", &home)
+                    .env("SHELL", shell)
+                    .env_remove("ZDOTDIR")
+                    .env_remove("ZEROBREW_DIR")
+                    .env_remove("ZEROBREW_AUTO_INIT")
+                    .arg("--root")
+                    .arg(&root)
+                    .arg("--prefix")
+                    .arg(&prefix)
+                    .args(args)
+                    .output()
+                    .unwrap()
+            };
+            for args in [
+                vec!["--auto-init", "list"],
+                vec!["reset", "--yes"],
+                vec!["init", "--no-modify-path"],
+            ] {
+                let output = run(&args);
+                assert_success(&output, "initialization in isolated home");
+                if args == ["init", "--no-modify-path"] {
+                    assert!(
+                        String::from_utf8_lossy(&output.stdout)
+                            .contains("Skipped shell configuration (--no-modify-path)")
+                    );
+                }
+                assert!(root.join("store").is_dir());
+                assert!(prefix.join("Cellar").is_dir());
+                assert_eq!(
+                    std::fs::read(&config).ok(),
+                    before,
+                    "shell={shell}, existing={existing}, args={args:?}"
+                );
+            }
+            assert_success(&run(&["init"]), "explicit zb init");
+            let updated = std::fs::read_to_string(&config).unwrap();
+            assert!(updated.contains(prefix.to_str().unwrap()));
+            if existing {
+                assert!(updated.starts_with("# keep this configuration\n"));
+            }
+        }
+    }
 }
