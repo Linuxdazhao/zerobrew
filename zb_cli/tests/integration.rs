@@ -111,6 +111,23 @@ fn assert_success(output: &Output, context: &str) {
     );
 }
 
+#[test]
+fn auto_init_uses_isolated_shell_environment() {
+    let t = TestEnv::new();
+    // Force the real auto-init path; both TempDirs otherwise already exist.
+    std::fs::remove_dir(t.prefix()).unwrap();
+    let fish_config = t.root.path().join(".config/fish/conf.d/zerobrew.fish");
+    std::fs::create_dir_all(fish_config.parent().unwrap()).unwrap();
+    std::fs::write(&fish_config, "# keep this fish configuration\n").unwrap();
+    assert_success(&t.zb(&["list"]), "zb list with isolated auto-init");
+    assert!(t.root.path().join("store").is_dir());
+    assert!(t.prefix().join("Cellar").is_dir());
+    assert_eq!(
+        std::fs::read_to_string(fish_config).unwrap(),
+        "# keep this fish configuration\n"
+    );
+}
+
 fn assert_stdout_contains(output: &Output, needle: &str) {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(

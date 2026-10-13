@@ -93,6 +93,7 @@ mod tests {
             version: "1.0.0".to_string(),
             source_url: "https://example.com/test.tar.gz".to_string(),
             source_checksum: None,
+            nounzip: false,
             ruby_source_path: None,
             build_dependencies: Vec::new(),
             runtime_dependencies: Vec::new(),

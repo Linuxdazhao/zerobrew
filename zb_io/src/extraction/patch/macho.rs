@@ -295,7 +295,7 @@ fn parse_slice(data: &[u8], slice: Slice, info: &mut MachoInfo) -> Result<(), Ma
             return Err(MachoError::BadLoadCommand { index, cmd });
         }
 
-        let kind = match cmd {
+        let kind = match macho::LoadCommandType(cmd) {
             macho::LC_ID_DYLIB => Some(PathKind::InstallName),
             macho::LC_LOAD_DYLIB
             | macho::LC_LOAD_WEAK_DYLIB
@@ -395,7 +395,7 @@ mod tests {
                         Some(pad) => header_len + string_len + pad,
                         None => (header_len + string_len).next_multiple_of(8),
                     };
-                    put_u32(&mut command, cmd_id, endian);
+                    put_u32(&mut command, cmd_id.0, endian);
                     put_u32(&mut command, size as u32, endian);
                     put_u32(&mut command, header_len as u32, endian);
                     command.resize(header_len, 0xAA);
@@ -403,7 +403,7 @@ mod tests {
                     command.resize(size, 0);
                 }
                 None => {
-                    put_u32(&mut command, cmd_id, endian);
+                    put_u32(&mut command, cmd_id.0, endian);
                     put_u32(&mut command, header_len as u32, endian);
                     command.resize(header_len, 0xBB);
                 }
@@ -652,7 +652,7 @@ mod tests {
             inspect(&tiny).unwrap_err(),
             MachoError::BadLoadCommand {
                 index: 0,
-                cmd: macho::LC_LOAD_DYLIB
+                cmd: macho::LC_LOAD_DYLIB.0
             }
         );
 
@@ -663,7 +663,7 @@ mod tests {
             inspect(&escaped).unwrap_err(),
             MachoError::BadLoadCommand {
                 index: 0,
-                cmd: macho::LC_LOAD_DYLIB
+                cmd: macho::LC_LOAD_DYLIB.0
             }
         );
 
@@ -679,7 +679,7 @@ mod tests {
             inspect(&unterminated).unwrap_err(),
             MachoError::UnterminatedString {
                 index: 0,
-                cmd: macho::LC_LOAD_DYLIB
+                cmd: macho::LC_LOAD_DYLIB.0
             }
         );
 

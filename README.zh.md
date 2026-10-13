@@ -61,6 +61,32 @@ brew install zerobrewhq/zerobrew/zerobrew
 
 ## 快速开始 (Quick start)
 
+需要使用 `brew` 命令时，可以手动启用兼容入口：
+
+```bash
+zb install-alias brew
+brew install jq
+zb install-alias brew --remove
+```
+
+启用后会在 `zb` 所在目录创建 `brew -> zb-brew`，该目录需要在 PATH 中。
+也可以在安装时启用：
+
+```bash
+curl -fsSL https://zerobrew.rs/install | bash -s -- --brew-compat
+```
+
+如果 PATH 或 Homebrew 的标准安装位置已有 Homebrew 或其他 `brew` 入口，
+启用会被拒绝，不会覆盖已有文件。移除命令只删除 zerobrew 自己创建的软链接。
+缺少 `zb-brew` 时，需要重新安装 zerobrew。
+
+兼容入口支持 `install`、`uninstall`、`list`、`info`、`outdated`、`upgrade`、
+`doctor`、`bundle` 和 `update`，参数与输出沿用 `zb`。
+`cleanup` 对应 `zb gc`，只清理未引用的 store 条目；`update` 只刷新软件包索引，
+不会更新 zerobrew 本身。`search`、`services`、`tap` 等命令，以及 `--cask`、
+`list --formula` 等参数暂不支持，会明确报错。
+`zb migrate` 需要 PATH 中的真实 Homebrew，不能通过该兼容入口执行迁移。
+
 ```bash
 zb install jq                   # 安装单个软件包
 zb install wget git             # 安装多个软件包

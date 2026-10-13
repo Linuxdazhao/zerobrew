@@ -23,6 +23,8 @@ pub struct BuildPlan {
     pub version: String,
     pub source_url: String,
     pub source_checksum: Option<String>,
+    /// The source download is a raw file (`using: :nounzip`), not an archive.
+    pub nounzip: bool,
     pub ruby_source_path: Option<String>,
     pub build_dependencies: Vec<String>,
     pub runtime_dependencies: Vec<String>,
@@ -45,6 +47,7 @@ impl BuildPlan {
             version,
             source_url: source.url.clone(),
             source_checksum: source.checksum.clone(),
+            nounzip: source.nounzip(),
             ruby_source_path: formula.ruby_source_path.clone(),
             build_dependencies: all_build_deps,
             runtime_dependencies: formula.runtime_dependencies(),
@@ -109,6 +112,7 @@ mod tests {
                     checksum: Some("abc123".to_string()),
                     tag: None,
                     revision: None,
+                    using: None,
                 }),
                 head: None,
             }),
@@ -164,5 +168,29 @@ mod tests {
             plan.cellar_path,
             PathBuf::from("/opt/zerobrew/Cellar/wget/1.0.0")
         );
+    }
+
+    #[test]
+    fn nounzip_flag_is_passed_through_to_plan() {
+        let mut f = test_formula("omp", "https://example.com/omp-darwin-arm64", &[]);
+        f.urls
+            .as_mut()
+            .and_then(|u| u.stable.as_mut())
+            .unwrap()
+            .using = Some("nounzip".to_string());
+        let prefix = PathBuf::from("/opt/zerobrew");
+        let plan = BuildPlan::from_formula(&f, &prefix).unwrap();
+        assert!(plan.nounzip);
+    }
+
+    #[test]
+    fn source_url_json_deserializes_using() {
+        let json = r#"{ "url": "https://example.com/bin", "checksum": "abc", "using": "nounzip" }"#;
+        let source: SourceUrl = serde_json::from_str(json).unwrap();
+        assert!(source.nounzip());
+
+        let json = r#"{ "url": "https://example.com/src.tar.gz", "checksum": "abc" }"#;
+        let source: SourceUrl = serde_json::from_str(json).unwrap();
+        assert!(!source.nounzip());
     }
 }

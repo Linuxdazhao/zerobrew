@@ -1,4 +1,8 @@
-use std::process::Command;
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 use zb_core::Error;
 
@@ -101,8 +105,8 @@ pub fn categorize_packages(packages: Vec<HomebrewPackage>) -> HomebrewMigrationP
 /// Only formulas from `homebrew/core` can be migrated to zerobrew.
 /// Formulas from other taps and all casks are collected separately.
 /// Only leaves are migrated, as there's no use to reinstalling dependencies.
-pub fn get_homebrew_packages() -> Result<HomebrewMigrationPackages, Error> {
-    let leaves_output = Command::new("brew")
+pub fn get_homebrew_packages(brew: &Path) -> Result<HomebrewMigrationPackages, Error> {
+    let leaves_output = Command::new(brew)
         .args(["leaves"])
         .output()
         .map_err(Error::exec("failed to run 'brew leaves'"))?;
@@ -118,7 +122,7 @@ pub fn get_homebrew_packages() -> Result<HomebrewMigrationPackages, Error> {
     let formulas = if leaves.is_empty() {
         Vec::new()
     } else {
-        let formulas_output = Command::new("brew")
+        let formulas_output = Command::new(brew)
             .args(["info", "--json=v1"])
             .args(&leaves)
             .output()
@@ -136,7 +140,7 @@ pub fn get_homebrew_packages() -> Result<HomebrewMigrationPackages, Error> {
         parse_formulas_from_json(&formulas_json)
     };
 
-    let casks_output = Command::new("brew")
+    let casks_output = Command::new(brew)
         .args(["list", "--cask"])
         .output()
         .map_err(Error::exec("failed to run 'brew list --cask'"))?;
@@ -152,9 +156,69 @@ pub fn get_homebrew_packages() -> Result<HomebrewMigrationPackages, Error> {
     let all_packages: Vec<HomebrewPackage> = formulas.into_iter().chain(casks).collect();
     Ok(categorize_packages(all_packages))
 }
+
+/// Resolve and pin the PATH entry before migration can install or uninstall anything.
+pub fn find_homebrew() -> Result<PathBuf, Error> {
+    for dir in env::split_paths(&env::var_os("PATH").unwrap_or_default()) {
+        let path = dir.join("brew");
+        let Ok(metadata) = fs::metadata(&path) else {
+            continue;
+        };
+        if !metadata.is_file() {
+            continue;
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if metadata.permissions().mode() & 0o111 == 0 {
+                continue;
+            }
+        }
+        let path = fs::canonicalize(path).map_err(Error::file("cannot locate Homebrew"))?;
+        validate_homebrew(&path)?;
+        return Ok(path);
+    }
+    Err(Error::ExecutionError {
+        message: "Homebrew's brew was not found on PATH; migration requires real Homebrew".into(),
+    })
+}
+
+fn validate_homebrew(path: &Path) -> Result<(), Error> {
+    let output = Command::new(path)
+        .arg("--version")
+        .output()
+        .map_err(Error::exec("cannot check Homebrew version"))?;
+    if !output.status.success() || !output.stdout.starts_with(b"Homebrew ") {
+        return Err(Error::ExecutionError {
+            message: format!(
+                "{} is not real Homebrew; migration cannot use zerobrew's brew compatibility entrypoint. Remove it with `zb install-alias brew --remove` and put Homebrew on PATH",
+                path.display()
+            ),
+        });
+    }
+    Ok(())
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn migration_rejects_compatibility_entrypoint_before_package_commands() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let brew = dir.path().join("brew");
+        fs::write(&brew, "#!/bin/sh\n[ \"$1\" = --version ] || exit 99\nprintf 'zerobrew brew compatibility 0.4.0\\n'\n").unwrap();
+        fs::set_permissions(&brew, fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(
+            validate_homebrew(&brew)
+                .unwrap_err()
+                .to_string()
+                .contains("not real Homebrew")
+        );
+        fs::write(&brew, "#!/bin/sh\nprintf 'Homebrew 7.0.0\\n'\n").unwrap();
+        validate_homebrew(&brew).unwrap();
+    }
 
     #[test]
     fn test_parse_formulas_from_json() {

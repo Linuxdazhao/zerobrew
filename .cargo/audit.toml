@@ -1,0 +1,7 @@
+[advisories]
+ignore = [
+    # ruzstd 0.8.3 decompression bomb, pulled in by arwen 0.0.5 -> object 0.38.
+    # Only reachable through object's compressed-section reads, which neither
+    # zb_io nor arwen call. Remove once arwen moves to object >= 0.40.
+    "RUSTSEC-2026-0344",
+]

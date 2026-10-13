@@ -24,6 +24,10 @@ async fn main() {
 async fn run(cli: Cli) -> Result<(), zb_core::Error> {
     let mut ui = Ui::new();
 
+    if let Commands::InstallAlias { remove, .. } = cli.command {
+        return commands::install_alias::execute(remove);
+    }
+
     if let Commands::Completion { shell } = cli.command {
         return commands::completion::execute(shell);
     }
@@ -42,6 +46,7 @@ async fn run(cli: Cli) -> Result<(), zb_core::Error> {
     let mut installer = create_installer(&root, &prefix, cli.concurrency)?;
 
     match cli.command {
+        Commands::InstallAlias { .. } => unreachable!(),
         Commands::Init { .. } => unreachable!(),
         Commands::Completion { .. } => unreachable!(),
         Commands::Install {

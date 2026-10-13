@@ -361,6 +361,19 @@ pub fn parse_tap_formula_ruby(spec: &TapFormulaRef, source: &str) -> Result<Form
             }
             None
         }
+        ParsedSourceUrl::UnsupportedStrategy(strategy) => {
+            // Same rule as a missing checksum: the source url is unusable,
+            // but a bottle can still be installed.
+            if bottle.is_none() {
+                return Err(Error::UnsupportedFormula {
+                    name: spec.formula.clone(),
+                    reason: format!(
+                        "tap formula source url uses unsupported download strategy '{strategy}'"
+                    ),
+                });
+            }
+            None
+        }
         ParsedSourceUrl::NotPresent => None,
     };
 
@@ -483,6 +496,27 @@ enum ParsedSourceUrl {
     NotPresent,
     PresentMissingChecksum,
     PresentWithChecksum(SourceUrl),
+    /// The source url declares a `using:` download strategy zerobrew cannot
+    /// handle (e.g. `:git`, `:svn`). Carries the strategy symbol name.
+    UnsupportedStrategy(String),
+}
+
+/// Matches `using: :nounzip` (strategy symbol) or `using: SomeDownloadStrategy`
+/// (class form, possibly namespaced) in a `url` statement, whether on the same
+/// line or on a comma continuation line.
+static USING_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"using:\s*([\w:]+)").expect("USING_RE must compile"));
+
+/// Normalize a `using:` value (symbol or class name) to the strategy name
+/// zerobrew understands. `Err` carries the raw token for the error message.
+fn normalize_using_strategy(raw: &str) -> Result<&'static str, &str> {
+    match raw {
+        ":nounzip" | "NoUnzipCurlDownloadStrategy" => Ok("nounzip"),
+        // Plain HTTP GET strategies behave like the default download.
+        ":curl" | "CurlDownloadStrategy" => Ok("curl"),
+        ":homebrew_curl" | "HomebrewCurlDownloadStrategy" => Ok("homebrew_curl"),
+        other => Err(other),
+    }
 }
 
 fn parse_source_url(source: &str) -> ParsedSourceUrl {
@@ -490,6 +524,10 @@ fn parse_source_url(source: &str) -> ParsedSourceUrl {
     let mut depth = 0usize;
     let mut url: Option<String> = None;
     let mut checksum: Option<String> = None;
+    let mut using: Option<&'static str> = None;
+    // True while we are still inside the `url` statement's option lines
+    // (comma continuations), so a `using:` on the next line binds to it.
+    let mut pending_options = false;
 
     for line in body.lines() {
         let trimmed = line.trim();
@@ -499,15 +537,33 @@ fn parse_source_url(source: &str) -> ParsedSourceUrl {
                 && let Some(cap) = SOURCE_URL_RE.captures(trimmed)
             {
                 url = cap.get(1).map(|m| m.as_str().to_string());
+                pending_options = true;
+            }
+
+            if pending_options && let Some(cap) = USING_RE.captures(trimmed) {
+                let raw = cap.get(1).map(|m| m.as_str()).unwrap_or_default();
+                match normalize_using_strategy(raw) {
+                    Ok(strategy) => using = Some(strategy),
+                    Err(other) => {
+                        return ParsedSourceUrl::UnsupportedStrategy(other.to_string());
+                    }
+                }
             }
 
             if checksum.is_none()
                 && let Some(cap) = SOURCE_SHA_RE.captures(trimmed)
             {
                 checksum = cap.get(1).map(|m| m.as_str().to_string());
+                pending_options = false;
             }
 
-            if url.is_some() && checksum.is_some() {
+            // The `url` statement continues onto the next line only while the
+            // current line ends with a comma; any other statement closes it.
+            if pending_options && !trimmed.ends_with(',') {
+                pending_options = false;
+            }
+
+            if url.is_some() && checksum.is_some() && !pending_options {
                 break;
             }
         }
@@ -521,6 +577,7 @@ fn parse_source_url(source: &str) -> ParsedSourceUrl {
             checksum: Some(checksum),
             tag: None,
             revision: None,
+            using: using.map(str::to_string),
         }),
         (Some(_), None) => ParsedSourceUrl::PresentMissingChecksum,
         _ => ParsedSourceUrl::NotPresent,
@@ -1451,6 +1508,243 @@ end
         {
             assert!(formula.dependencies.contains(&"linux-only-dep".to_string()));
             assert!(!formula.dependencies.contains(&"macos-only-dep".to_string()));
+        }
+    }
+
+    #[test]
+    fn parses_nounzip_on_continuation_line() {
+        let source = r#"
+class Omp < Formula
+  version "18.8.6"
+  url "https://github.com/can1357/oh-my-pi/releases/download/v#{version}/omp-darwin-arm64",
+      using: :nounzip
+  sha256 "31faa0ee8420a13a783f4ca56d98f974e4a9f9081d269057a099f7eb618d1133"
+end
+"#;
+
+        let spec = TapFormulaRef {
+            owner: "can1357".to_string(),
+            repo: "tap".to_string(),
+            formula: "omp".to_string(),
+        };
+
+        let formula = parse_tap_formula_ruby(&spec, source).unwrap();
+        let stable = formula.source_url().expect("stable source url");
+        assert!(stable.nounzip());
+        assert_eq!(
+            stable.checksum.as_deref(),
+            Some("31faa0ee8420a13a783f4ca56d98f974e4a9f9081d269057a099f7eb618d1133")
+        );
+    }
+
+    #[test]
+    fn parses_nounzip_on_same_line() {
+        let source = r#"
+class Example < Formula
+  url "https://example.com/example-binary", using: :nounzip
+  sha256 "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+end
+"#;
+
+        let spec = TapFormulaRef {
+            owner: "someone".to_string(),
+            repo: "tap".to_string(),
+            formula: "example".to_string(),
+        };
+
+        let formula = parse_tap_formula_ruby(&spec, source).unwrap();
+        assert!(formula.source_url().expect("stable source url").nounzip());
+    }
+
+    #[test]
+    fn nounzip_from_discarded_platform_branch_is_not_applied() {
+        let source = r#"
+class Example < Formula
+  version "1.0.0"
+
+  on_macos do
+    url "https://example.com/example_darwin.tar.gz"
+    sha256 "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  end
+
+  on_linux do
+    url "https://example.com/example_linux",
+        using: :nounzip
+    sha256 "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  end
+end
+"#;
+
+        let spec = TapFormulaRef {
+            owner: "someone".to_string(),
+            repo: "tap".to_string(),
+            formula: "example".to_string(),
+        };
+
+        let formula = parse_tap_formula_ruby(&spec, source).unwrap();
+        let stable = formula.source_url().expect("stable source url");
+
+        #[cfg(target_os = "macos")]
+        {
+            assert_eq!(stable.url, "https://example.com/example_darwin.tar.gz");
+            assert!(
+                !stable.nounzip(),
+                "nounzip from the discarded linux branch must not leak"
+            );
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            assert_eq!(stable.url, "https://example.com/example_linux");
+            assert!(stable.nounzip());
+        }
+    }
+
+    #[test]
+    fn unsupported_using_strategy_is_rejected() {
+        let source = r#"
+class Example < Formula
+  url "https://example.com/example.git", using: :git
+  sha256 "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+end
+"#;
+
+        let spec = TapFormulaRef {
+            owner: "someone".to_string(),
+            repo: "tap".to_string(),
+            formula: "example".to_string(),
+        };
+
+        let err = parse_tap_formula_ruby(&spec, source).unwrap_err();
+        match err {
+            Error::UnsupportedFormula { reason, .. } => {
+                assert!(
+                    reason.contains(":git"),
+                    "reason should name the strategy: {reason}"
+                );
+            }
+            other => panic!("expected UnsupportedFormula, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn using_on_later_statement_does_not_leak_into_url_options() {
+        let source = r#"
+class Example < Formula
+  url "https://example.com/example-binary",
+      using: :nounzip
+  mirror "https://mirror.example/example.git", using: :git
+  sha256 "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+end
+"#;
+
+        let spec = TapFormulaRef {
+            owner: "someone".to_string(),
+            repo: "tap".to_string(),
+            formula: "example".to_string(),
+        };
+
+        let formula = parse_tap_formula_ruby(&spec, source).unwrap();
+        let stable = formula.source_url().expect("stable source url");
+        assert!(stable.nounzip());
+        assert_eq!(stable.url, "https://example.com/example-binary");
+    }
+
+    #[test]
+    fn unsupported_using_with_bottle_falls_back_to_bottle() {
+        let source = r#"
+class Example < Formula
+  version "1.0.0"
+  url "https://example.com/example.git", using: :git
+  sha256 "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  bottle do
+    root_url "https://ghcr.io/v2/someone/tap"
+    sha256 cellar: :any_skip_relocation, arm64_sonoma: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  end
+end
+"#;
+
+        let spec = TapFormulaRef {
+            owner: "someone".to_string(),
+            repo: "tap".to_string(),
+            formula: "example".to_string(),
+        };
+
+        let formula = parse_tap_formula_ruby(&spec, source).unwrap();
+        assert!(
+            formula.urls.is_none(),
+            "unusable source url should be dropped, not fail the formula"
+        );
+        assert!(!formula.bottle.stable.files.is_empty());
+    }
+
+    #[test]
+    fn curl_using_strategy_is_accepted() {
+        let source = r#"
+class Example < Formula
+  url "https://example.com/example-1.0.0.tar.gz", using: :curl
+  sha256 "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+end
+"#;
+
+        let spec = TapFormulaRef {
+            owner: "someone".to_string(),
+            repo: "tap".to_string(),
+            formula: "example".to_string(),
+        };
+
+        let formula = parse_tap_formula_ruby(&spec, source).unwrap();
+        let stable = formula.source_url().expect("stable source url");
+        assert!(!stable.nounzip());
+    }
+
+    #[test]
+    fn parses_class_form_nounzip_strategy() {
+        let source = r#"
+class Example < Formula
+  url "https://example.com/example-binary",
+      using: NoUnzipCurlDownloadStrategy
+  sha256 "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+end
+"#;
+
+        let spec = TapFormulaRef {
+            owner: "someone".to_string(),
+            repo: "tap".to_string(),
+            formula: "example".to_string(),
+        };
+
+        let formula = parse_tap_formula_ruby(&spec, source).unwrap();
+        let stable = formula.source_url().expect("stable source url");
+        assert!(stable.nounzip());
+        assert_eq!(stable.using.as_deref(), Some("nounzip"));
+    }
+
+    #[test]
+    fn unknown_class_strategy_is_rejected() {
+        let source = r#"
+class Example < Formula
+  url "https://example.com/example.tar.gz",
+      using: GitHubPrivateRepositoryReleaseDownloadStrategy
+  sha256 "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+end
+"#;
+
+        let spec = TapFormulaRef {
+            owner: "someone".to_string(),
+            repo: "tap".to_string(),
+            formula: "example".to_string(),
+        };
+
+        let err = parse_tap_formula_ruby(&spec, source).unwrap_err();
+        match err {
+            Error::UnsupportedFormula { reason, .. } => {
+                assert!(
+                    reason.contains("GitHubPrivateRepositoryReleaseDownloadStrategy"),
+                    "reason should name the strategy class: {reason}"
+                );
+            }
+            other => panic!("expected UnsupportedFormula, got {other:?}"),
         }
     }
 }

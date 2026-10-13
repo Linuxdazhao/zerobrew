@@ -221,7 +221,7 @@ fn patch_elf_placeholders(keg_path: &Path, prefix_dir: &Path) -> Result<(), Erro
                 .builder()
                 .segments
                 .iter()
-                .any(|s| s.p_type == object::elf::PT_DYNAMIC);
+                .any(|s| s.p_type == object::elf::PT_DYNAMIC.0);
             if !has_dynamic_segment {
                 return Ok(());
             }
@@ -252,8 +252,8 @@ fn patch_elf_placeholders(keg_path: &Path, prefix_dir: &Path) -> Result<(), Erro
             }
 
             // Interpreter
-            let is_executable = elf.inner.builder().header.e_type == object::elf::ET_EXEC
-                || (elf.inner.builder().header.e_type == object::elf::ET_DYN
+            let is_executable = elf.inner.builder().header.e_type == object::elf::ET_EXEC.0
+                || (elf.inner.builder().header.e_type == object::elf::ET_DYN.0
                     && elf.inner.elf_interpreter().is_some());
 
             if is_executable && let Some(current_interp_bytes) = elf.inner.elf_interpreter() {

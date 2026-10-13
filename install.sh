@@ -48,10 +48,12 @@ BUILD_OUTPUT=""
 DOWNLOAD_TEMP_DIR=""
 DOWNLOADED_ZB_PATH=""
 DOWNLOADED_ZBX_PATH=""
+DOWNLOADED_ZB_BREW_PATH=""
 cleanup() {
     printf '\033[?25h'  # Restore cursor
     [[ -n "$BUILD_OUTPUT" && -f "$BUILD_OUTPUT" ]] && rm -f "$BUILD_OUTPUT"
     [[ -n "$DOWNLOAD_TEMP_DIR" && -d "$DOWNLOAD_TEMP_DIR" ]] && rm -rf "$DOWNLOAD_TEMP_DIR"
+    return 0
 }
 trap cleanup EXIT
 
@@ -101,6 +103,7 @@ if [[ $EUID -eq 0 ]]; then
 fi
 
 no_modify_path=false
+brew_compat=false
 binary_paths=()
 
 usage() {
@@ -110,13 +113,14 @@ usage() {
     printf "\n"
     printf "Options:\n"
     printf "    -h, --help               %bDisplay this help message%b\n" "$MUTED" "$NC"
-    printf "    -b, --binary <path>...   %bInstalls binaries (zb, zbx) to \$ZEROBREW_BIN%b\n" "$MUTED" "$NC"
+    printf "    -b, --binary <path>...   %bInstalls binaries (zb, zbx, zb-brew) to \$ZEROBREW_BIN%b\n" "$MUTED" "$NC"
+    printf "        --brew-compat        %bEnable brew compatibility (refuses existing Homebrew)%b\n" "$MUTED" "$NC"
     printf "        --no-modify-path     %bDon't modify shell config files (.zshrc, .bashrc, etc.)%b\n" "$MUTED" "$NC"
     printf "\n"
     printf "Examples:%b\n" "$MUTED"
     printf "    ./install.sh --no-modify-path\n"
     printf "    ./install.sh -b /path/to/zb\n"
-    printf "    ./install.sh -b /path/to/zb /path/to/zbx%b\n" "$NC"
+    printf "    ./install.sh -b /path/to/zb /path/to/zbx /path/to/zb-brew%b\n" "$NC"
 }
 
 spinner() {
@@ -253,6 +257,10 @@ finalize_installation() {
         export PATH="$ZEROBREW_BIN:$PATH"
     fi
 
+    if [[ "$brew_compat" == "true" ]]; then
+        PATH="$ZEROBREW_BIN:$ORIGINAL_PATH" "$ZEROBREW_BIN/zb" install-alias brew \
+            || error_exit "Failed to enable brew compatibility"
+    fi
     zb_init "$ZEROBREW_BIN/zb" "$no_modify"
     report_zb_version
 
@@ -318,6 +326,8 @@ download_release_binary() {
         DOWNLOADED_ZB_PATH="$downloaded_path"
     elif [[ "$output_name" == "zbx" ]]; then
         DOWNLOADED_ZBX_PATH="$downloaded_path"
+    elif [[ "$output_name" == "zb-brew" ]]; then
+        DOWNLOADED_ZB_BREW_PATH="$downloaded_path"
     fi
 
     completed "Downloaded ${ORANGE}${asset_name}${NC} from GitHub Releases"
@@ -325,11 +335,12 @@ download_release_binary() {
 }
 
 try_release_install() {
-    local zb_asset zbx_asset
+    local zb_asset zbx_asset brew_asset
 
     DOWNLOAD_TEMP_DIR=$(mktemp -d)
     DOWNLOADED_ZB_PATH=""
     DOWNLOADED_ZBX_PATH=""
+    DOWNLOADED_ZB_BREW_PATH=""
 
     if ! zb_asset=$(resolve_release_asset "zb"); then
         warn "No prebuilt release binary for zb on $(uname -s)/$(uname -m). Falling back to source build."
@@ -344,10 +355,19 @@ try_release_install() {
     if zbx_asset=$(resolve_release_asset "zbx"); then
         download_release_binary "$zbx_asset" "zbx" "false"
     fi
+    if brew_asset=$(resolve_release_asset "zb-brew"); then
+        if ! download_release_binary "$brew_asset" "zb-brew" "$brew_compat"; then
+            warn "brew compatibility binary is unavailable. Falling back to source build."
+            return 1
+        fi
+    fi
 
     local binaries_to_install=("$DOWNLOADED_ZB_PATH")
     if [[ -n "$DOWNLOADED_ZBX_PATH" && -f "$DOWNLOADED_ZBX_PATH" ]]; then
         binaries_to_install+=("$DOWNLOADED_ZBX_PATH")
+    fi
+    if [[ -n "$DOWNLOADED_ZB_BREW_PATH" && -f "$DOWNLOADED_ZB_BREW_PATH" ]]; then
+        binaries_to_install+=("$DOWNLOADED_ZB_BREW_PATH")
     fi
 
     install_bin "$ZEROBREW_BIN" "${binaries_to_install[@]}"
@@ -378,14 +398,18 @@ while [[ $# -gt 0 ]]; do
         no_modify_path=true
         shift
         ;;
+    --brew-compat)
+        brew_compat=true
+        shift
+        ;;
     -b | --binary)
         if [[ -n "${2:-}" ]]; then
             binary_paths+=("$2")
             shift 2
-            if [[ -n "${1:-}" && "${1:0:1}" != "-" ]]; then
+            while [[ -n "${1:-}" && "${1:0:1}" != "-" ]]; do
                 binary_paths+=("$1")
                 shift
-            fi
+            done
         else
             error_exit "--binary requires a path argument"
         fi
@@ -480,12 +504,12 @@ fi
 BUILD_OUTPUT=$(mktemp)
 
 (
-    if ! cargo build --release --bin zb --bin zbx --message-format=json > "$BUILD_OUTPUT" 2>&1; then
+    if ! cargo build --release --bin zb --bin zbx --bin zb-brew --message-format=json > "$BUILD_OUTPUT" 2>&1; then
         exit 1
     fi
 ) &
 if ! spinner "Building ${ORANGE}zerobrew${NC}" $!; then
-    error_exit "Failed to build zerobrew. Run 'cargo build --release --bin zb --bin zbx' to see details."
+    error_exit "Failed to build zerobrew. Run 'cargo build --release --bin zb --bin zbx --bin zb-brew' to see details."
 fi
 completed "Built ${ORANGE}zerobrew${NC}"
 
@@ -509,6 +533,7 @@ parse_binary_path() {
 
 ZB_PATH=$(parse_binary_path "zb")
 ZBX_PATH=$(parse_binary_path "zbx")
+ZB_BREW_PATH=$(parse_binary_path "zb-brew")
 
 if [[ -z "$ZB_PATH" || ! -f "$ZB_PATH" ]]; then
     error_exit "Build succeeded but could not locate zb binary. Check cargo configuration."
@@ -518,5 +543,9 @@ if [[ -z "$ZBX_PATH" || ! -f "$ZBX_PATH" ]]; then
     error_exit "Build succeeded but could not locate zbx binary. Check cargo configuration."
 fi
 
-install_bin "$ZEROBREW_BIN" "$ZB_PATH" "$ZBX_PATH"
+if [[ -z "$ZB_BREW_PATH" || ! -f "$ZB_BREW_PATH" ]]; then
+    error_exit "Build succeeded but could not locate zb-brew binary. Check cargo configuration."
+fi
+
+install_bin "$ZEROBREW_BIN" "$ZB_PATH" "$ZBX_PATH" "$ZB_BREW_PATH"
 finalize_installation "$no_modify_path"

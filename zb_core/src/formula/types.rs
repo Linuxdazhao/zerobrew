@@ -48,6 +48,19 @@ pub struct SourceUrl {
     pub tag: Option<String>,
     #[serde(default)]
     pub revision: Option<String>,
+    /// Download strategy from `using:` (formula API `urls.stable.using`, or
+    /// parsed from a tap formula's Ruby source). Stored without the leading
+    /// colon, e.g. `"nounzip"`.
+    #[serde(default, rename = "using")]
+    pub using: Option<String>,
+}
+
+impl SourceUrl {
+    /// True when the download is a raw file (`using: :nounzip`) that must
+    /// not be unpacked as an archive.
+    pub fn nounzip(&self) -> bool {
+        self.using.as_deref() == Some("nounzip")
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]

@@ -33,9 +33,11 @@ impl BuildExecutor {
         self.prepare_work_dir(&work_dir).await?;
 
         let source_root = download_and_extract_source(
+            &plan.formula_name,
             &plan.source_url,
             plan.source_checksum.as_deref(),
             &work_dir,
+            plan.nounzip,
         )
         .await?;
 
