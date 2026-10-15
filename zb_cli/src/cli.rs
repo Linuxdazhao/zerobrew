@@ -114,7 +114,7 @@ pub enum Commands {
     InstallAlias {
         #[arg(value_parser = ["brew"])]
         name: String,
-        #[arg(long, help = "Remove only zerobrew's brew symlink")]
+        #[arg(long, help = "Remove only zerobrew's brew compatibility symlinks")]
         remove: bool,
     },
     /// Install formulas and casks

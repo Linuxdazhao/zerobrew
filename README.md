@@ -68,7 +68,7 @@ brew install jq
 zb install-alias brew --remove
 ```
 
-This creates `brew -> zb-brew` beside `zb`; ensure that directory is on PATH.
+This creates `brew -> zb-brew` beside `zb` (ensure that directory is on PATH) and symlinks Homebrew's default `bin` directory (`/opt/homebrew/bin` on macOS, `/home/linuxbrew/.linuxbrew/bin` on Linux) to `<prefix>/bin` so tools and scripts configured for Homebrew's `bin` path keep working after migration.
 You can also enable it during installation:
 
 ```bash
@@ -76,8 +76,8 @@ curl -fsSL https://zerobrew.rs/install | bash -s -- --brew-compat
 ```
 
 Enabling it refuses existing Homebrew or other `brew` entrypoints on PATH and
-standard Homebrew locations, and never replaces an existing file. Removing it
-only deletes zerobrew's own symlink. If `zb-brew` is missing, reinstall zerobrew.
+standard Homebrew locations, and never replaces an existing file or directory. Removing it
+only deletes zerobrew's own symlinks. If `zb-brew` is missing, reinstall zerobrew.
 
 The entrypoint supports `install`, `uninstall`, `list`, `info`, `outdated`,
 `upgrade`, `doctor`, `bundle`, and `update`, using the arguments and output

@@ -24,16 +24,16 @@ async fn main() {
 async fn run(cli: Cli) -> Result<(), zb_core::Error> {
     let mut ui = Ui::new();
 
-    if let Commands::InstallAlias { remove, .. } = cli.command {
-        return commands::install_alias::execute(remove);
-    }
-
     if let Commands::Completion { shell } = cli.command {
         return commands::completion::execute(shell);
     }
 
     let root = get_root_path(cli.root);
     let prefix = get_prefix_path(cli.prefix, &root);
+
+    if let Commands::InstallAlias { remove, .. } = cli.command {
+        return commands::install_alias::execute(&prefix, remove);
+    }
 
     if let Commands::Init { no_modify_path } = cli.command {
         return commands::init::execute(&root, &prefix, no_modify_path, &mut ui);

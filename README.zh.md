@@ -69,7 +69,7 @@ brew install jq
 zb install-alias brew --remove
 ```
 
-启用后会在 `zb` 所在目录创建 `brew -> zb-brew`，该目录需要在 PATH 中。
+启用后会在 `zb` 所在目录创建 `brew -> zb-brew`（该目录需要在 PATH 中），并将 Homebrew 默认的 `bin` 目录（macOS 上为 `/opt/homebrew/bin`，Linux 上为 `/home/linuxbrew/.linuxbrew/bin`）软链接到 `<prefix>/bin`，方便迁移后继续使用写死 Homebrew `bin` 路径的软件配置或脚本。
 也可以在安装时启用：
 
 ```bash
@@ -77,7 +77,7 @@ curl -fsSL https://zerobrew.rs/install | bash -s -- --brew-compat
 ```
 
 如果 PATH 或 Homebrew 的标准安装位置已有 Homebrew 或其他 `brew` 入口，
-启用会被拒绝，不会覆盖已有文件。移除命令只删除 zerobrew 自己创建的软链接。
+启用会被拒绝，不会覆盖已有的文件或目录。移除命令只删除 zerobrew 自己创建的软链接。
 缺少 `zb-brew` 时，需要重新安装 zerobrew。
 
 兼容入口支持 `install`、`uninstall`、`list`、`info`、`outdated`、`upgrade`、

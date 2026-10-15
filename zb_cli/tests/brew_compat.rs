@@ -87,15 +87,53 @@ fn removal_does_not_initialize_zerobrew_or_need_the_companion() {
     let dir = tempfile::tempdir().unwrap();
     write_executables(|| fs::copy(env!("CARGO_BIN_EXE_zb"), dir.path().join("zb")).unwrap());
     let root = dir.path().join("unused-root");
+    let prefix = dir.path().join("unused-prefix");
+    let homebrew = dir.path().join("homebrew");
+    fs::create_dir(&homebrew).unwrap();
     symlink("zb-brew", dir.path().join("brew")).unwrap();
+    symlink(prefix.join("bin"), homebrew.join("bin")).unwrap();
     let output = run(Command::new(dir.path().join("zb"))
         .env("ZEROBREW_ROOT", &root)
+        .env("ZEROBREW_PREFIX", &prefix)
+        .env("ZEROBREW_HOMEBREW_PREFIX", &homebrew)
         .args(["install-alias", "brew", "--remove"]));
     assert!(output.status.success(), "{:?}", output);
     assert!(!root.exists());
+    assert!(!prefix.exists());
     assert!(fs::symlink_metadata(dir.path().join("brew")).is_err());
+    assert!(fs::symlink_metadata(homebrew.join("bin")).is_err());
+
     let output = run(Command::new(dir.path().join("zb")).args(["install-alias", "other"]));
     assert_eq!(output.status.code(), Some(2));
+}
+
+#[test]
+fn brew_alias_cli_links_both_brew_and_homebrew_bin_dir() {
+    let dir = entrypoint();
+    fs::remove_file(dir.path().join("brew")).unwrap();
+    write_executables(|| fs::copy(env!("CARGO_BIN_EXE_zb"), dir.path().join("zb")).unwrap());
+    let root = dir.path().join("root");
+    let prefix = dir.path().join("prefix");
+    let homebrew = dir.path().join("homebrew");
+    fs::create_dir_all(prefix.join("bin")).unwrap();
+    fs::write(prefix.join("bin/jq"), "#!/bin/sh\n").unwrap();
+
+    let output = run(Command::new(dir.path().join("zb"))
+        .env("PATH", "")
+        .env("ZEROBREW_ROOT", &root)
+        .env("ZEROBREW_PREFIX", &prefix)
+        .env("ZEROBREW_HOMEBREW_PREFIX", &homebrew)
+        .args(["install-alias", "brew"]));
+    assert!(output.status.success(), "{:?}", output);
+    assert_eq!(
+        fs::read_link(dir.path().join("brew")).unwrap(),
+        std::path::Path::new("zb-brew")
+    );
+    assert_eq!(
+        fs::read_link(homebrew.join("bin")).unwrap(),
+        prefix.join("bin")
+    );
+    assert!(homebrew.join("bin/jq").exists());
 }
 
 #[test]
